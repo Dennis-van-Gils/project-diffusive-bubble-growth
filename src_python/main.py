@@ -9,6 +9,20 @@ __date__ = "11-10-2022"
 __version__ = "1.0"
 # pylint: disable=bare-except, broad-except, unnecessary-lambda
 
+# Constants
+DAQ_INTERVAL_MS = 1000  # [ms]
+CHART_INTERVAL_MS = 500  # [ms]
+CHART_HISTORY_TIME = 7200  # [s]
+
+# Picotech PT-104 settings
+PT104_IP = "10.10.100.2"
+PT104_PORT = 1234
+PT104_ENA = [1, 0, 0, 0]
+PT104_GAIN = [1, 0, 0, 0]
+
+# Show debug info in terminal? Warning: Slow! Do not leave on unintentionally.
+DEBUG = False
+
 # Mechanism to support both PyQt and PySide
 # -----------------------------------------
 import os
@@ -77,7 +91,6 @@ QT_VERSION = (
 # -----------------------------------------------
 
 import time
-import psutil
 import numpy as np
 import pyqtgraph as pg
 import dvg_monkeypatch_pyqtgraph  # pylint: disable=unused-import
@@ -95,15 +108,6 @@ from dvg_devices.Arduino_protocol_serial import Arduino
 from dvg_devices.Picotech_PT104_protocol_UDP import Picotech_PT104
 from dvg_devices.Picotech_PT104_qdev import Picotech_PT104_qdev
 from dvg_qdeviceio import QDeviceIO
-
-
-# Constants
-DAQ_INTERVAL_MS = 1000  # [ms]
-CHART_INTERVAL_MS = 500  # [ms]
-CHART_HISTORY_TIME = 7200  # [s]
-
-# Show debug info in terminal? Warning: Slow! Do not leave on unintentionally.
-DEBUG = False
 
 TRY_USING_OPENGL = True
 if TRY_USING_OPENGL:
@@ -134,13 +138,13 @@ def get_current_date_time():
 
 
 # ------------------------------------------------------------------------------
-#   Arduino state
+#   State
 # ------------------------------------------------------------------------------
 
 
 class State(object):
-    """Reflects the actual readings, parsed into separate variables, of the
-    Arduino. There should only be one instance of the State class.
+    """Reflects the actual readings of the Arduino and PT104. There should only
+    be one instance of the State class.
     """
 
     def __init__(self):
@@ -390,9 +394,9 @@ class MainWindow(QtWid.QWidget):
     def update_GUI(self):
         str_cur_date, str_cur_time, _ = get_current_date_time()
         self.qlbl_cur_date_time.setText(f"{str_cur_date}    {str_cur_time}")
-        self.qlbl_update_counter.setText(f"{qdev_ard.update_counter_DAQ:d}")
+        self.qlbl_update_counter.setText(f"{ard_qdev.update_counter_DAQ:d}")
         self.qlbl_DAQ_rate.setText(
-            f"DAQ: {qdev_ard.obtained_DAQ_rate_Hz:.1f} Hz"
+            f"DAQ: {ard_qdev.obtained_DAQ_rate_Hz:.1f} Hz"
         )
         self.qlbl_recording_time.setText(
             f"REC: {logger.pretty_elapsed()}" if logger.is_recording() else ""
@@ -400,21 +404,23 @@ class MainWindow(QtWid.QWidget):
         self.qlin_temp.setText(f"{state.temp:.3f}")
         self.qlin_pres.setText(f"{state.pres:.3f}")
 
-        if DEBUG:
-            tprint("update_chart")
-
-        for tscurve in self.tscurves:
-            tscurve.update()
-
-    """
     @Slot()
     def update_chart(self):
         if DEBUG:
             tprint("update_chart")
 
         for tscurve in self.tscurves:
-            tscurve.update()
-    """
+            # x = tscurve._buffer_x
+            # y = tscurve._buffer_y
+            # finite = np.logical_and(np.isfinite(x), np.isfinite(y))
+            # x_finite = x[finite]
+            # y_finite = y[finite]
+            # print(tscurve._buffer_y)
+            # print(y_finite)
+
+            if tscurve.size[0] > 2:
+                # print(tscurve._buffer_y)
+                tscurve.update()
 
 
 # ------------------------------------------------------------------------------
@@ -424,13 +430,13 @@ class MainWindow(QtWid.QWidget):
 
 def stop_running():
     app.processEvents()
-    qdev_ard.quit()
+    ard_qdev.quit()
     pt104_qdev.quit()
     logger.close()
 
     print("Stopping timers................ ", end="")
     timer_GUI.stop()
-    # timer_charts.stop()
+    timer_charts.stop()
     print("done.")
 
 
@@ -493,12 +499,18 @@ def DAQ_function():
 
     # Add readings to chart histories
     window.tscurve_pres.appendData(state.time, state.pres)
+    window.tscurve_temp.appendData(state.time, state.temp)
 
     # Logging to file
     logger.update(filepath=str_cur_datetime + ".txt", mode="w")
 
     # Return success
     return True
+
+
+# ------------------------------------------------------------------------------
+#   File logger
+# ------------------------------------------------------------------------------
 
 
 def write_header_to_log():
@@ -515,28 +527,11 @@ def write_data_to_log():
     )
 
 
-@Slot()
-def process_PT104_updated():
-    state.temp = pt104.state.ch1_T
-    window.tscurve_temp.appendData(time.perf_counter(), state.temp)
-
-
 # ------------------------------------------------------------------------------
 #   Main
 # ------------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    # Set priority of this process to maximum in the operating system
-    print(f"PID: {os.getpid()}\n")
-    try:
-        proc = psutil.Process(os.getpid())
-        if os.name == "nt":
-            proc.nice(psutil.REALTIME_PRIORITY_CLASS)  # Windows
-        else:
-            proc.nice(-20)  # Other
-    except:
-        print("Warning: Could not set process to maximum priority.\n")
-
     # --------------------------------------------------------------------------
     #   Connect to devices
     # --------------------------------------------------------------------------
@@ -554,22 +549,16 @@ if __name__ == "__main__":
         sys.exit(0)
 
     # Picotech PT-104
-    # fmt: off
-    IP_ADDRESS    = "10.10.100.2"
-    PORT          = 1234
-    ENA_channels  = [1, 0, 0, 0]
-    gain_channels = [1, 1, 1, 1]
-    # fmt: on
     pt104 = Picotech_PT104(name="PT104")
-    if pt104.connect(IP_ADDRESS, PORT):
+    if pt104.connect(PT104_IP, PT104_PORT):
         pt104.begin()
-        pt104.start_conversion(ENA_channels, gain_channels)
+        pt104.start_conversion(PT104_ENA, PT104_GAIN)
 
     # --------------------------------------------------------------------------
     #   Create application
     # --------------------------------------------------------------------------
-    QtCore.QThread.currentThread().setObjectName("MAIN")  # For DEBUG info
 
+    QtCore.QThread.currentThread().setObjectName("MAIN")  # For DEBUG info
     app = QtWid.QApplication(sys.argv)
     app.setFont(QtGui.QFont("Arial", 9))
     app.aboutToQuit.connect(about_to_quit)
@@ -579,8 +568,8 @@ if __name__ == "__main__":
     # --------------------------------------------------------------------------
 
     # Arduino
-    qdev_ard = QDeviceIO(ard)
-    qdev_ard.create_worker_DAQ(
+    ard_qdev = QDeviceIO(ard)
+    ard_qdev.create_worker_DAQ(
         DAQ_function=DAQ_function,
         DAQ_interval_ms=DAQ_INTERVAL_MS,
         critical_not_alive_count=3,
@@ -588,8 +577,15 @@ if __name__ == "__main__":
     )
 
     # Picotech PT-104
-    pt104_qdev = Picotech_PT104_qdev(dev=pt104, DAQ_interval_ms=1000)
-    pt104_qdev.signal_DAQ_updated.connect(process_PT104_updated)
+    pt104_qdev = Picotech_PT104_qdev(
+        dev=pt104,
+        DAQ_interval_ms=10,
+        debug=DEBUG,
+    )
+
+    @Slot()
+    def process_PT104_updated():
+        state.temp = pt104.state.ch1_T
 
     # --------------------------------------------------------------------------
     #   Create GUI
@@ -598,8 +594,9 @@ if __name__ == "__main__":
     window = MainWindow()
 
     # Connect signals
-    qdev_ard.signal_DAQ_updated.connect(window.update_GUI)
-    qdev_ard.signal_connection_lost.connect(notify_connection_lost)
+    ard_qdev.signal_DAQ_updated.connect(window.update_GUI)
+    ard_qdev.signal_connection_lost.connect(notify_connection_lost)
+    pt104_qdev.signal_DAQ_updated.connect(process_PT104_updated)
 
     # --------------------------------------------------------------------------
     #   File logger
@@ -611,7 +608,7 @@ if __name__ == "__main__":
     )
     logger.signal_recording_started.connect(
         lambda filepath: window.qpbt_record.setText(
-            "Recording to file: %s" % filepath
+            f"Recording to file: {filepath}"
         )
     )
     logger.signal_recording_stopped.connect(
@@ -626,20 +623,18 @@ if __name__ == "__main__":
     timer_GUI.timeout.connect(window.update_GUI)
     timer_GUI.start(100)
 
-    """
     timer_charts = QtCore.QTimer()
     timer_charts.timeout.connect(window.update_chart)
     timer_charts.start(CHART_INTERVAL_MS)
-    """
 
     # --------------------------------------------------------------------------
     #   Start the main GUI event loop
     # --------------------------------------------------------------------------
 
-    qdev_ard.start()
+    ard_qdev.start()
     pt104_qdev.start()
-
     window.show()
+
     if QT_LIB in (PYQT5, PYSIDE2):
         sys.exit(app.exec_())
     else:
