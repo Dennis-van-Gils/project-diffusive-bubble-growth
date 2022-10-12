@@ -37,19 +37,28 @@ firmware.
 Running the application
 -----------------------
 
-Preferred Python distributions:
+| Preferred distribution: Anaconda full or Miniconda
+
     * `Anaconda <https://www.anaconda.com>`_
     * `Miniconda <https://docs.conda.io/en/latest/miniconda.html>`_
 
 Open `Anaconda Prompt` and navigate to the unpacked folder. Run the following to
 install the necessary packages: ::
 
-    cd src_python
-    pip install -r requirements.txt
+   cd src_python
+   conda update -n base -c defaults conda
+   conda create -n py39 python=3.9
+   conda activate py39
+   pip install -r requirements.txt
 
-Now you can run the application: ::
+Now you can run the application.
+In Anaconda prompt:
 
-    python main.py
+::
+
+    conda activate py39
+    ipython main.py
+
 
 LED status lights
 =================

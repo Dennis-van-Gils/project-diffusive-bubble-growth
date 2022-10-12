@@ -93,7 +93,6 @@ QT_VERSION = (
 import time
 import numpy as np
 import pyqtgraph as pg
-import dvg_monkeypatch_pyqtgraph  # pylint: disable=unused-import
 
 import dvg_pyqt_controls as controls
 from dvg_debug_functions import tprint, dprint, print_fancy_traceback as pft
@@ -410,17 +409,7 @@ class MainWindow(QtWid.QWidget):
             tprint("update_chart")
 
         for tscurve in self.tscurves:
-            # x = tscurve._buffer_x
-            # y = tscurve._buffer_y
-            # finite = np.logical_and(np.isfinite(x), np.isfinite(y))
-            # x_finite = x[finite]
-            # y_finite = y[finite]
-            # print(tscurve._buffer_y)
-            # print(y_finite)
-
-            if tscurve.size[0] > 2:
-                # print(tscurve._buffer_y)
-                tscurve.update()
+            tscurve.update()
 
 
 # ------------------------------------------------------------------------------
