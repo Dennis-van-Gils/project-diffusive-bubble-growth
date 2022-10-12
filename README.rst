@@ -11,7 +11,7 @@ A pressure and temperature logger for the Diffusive Bubble Growth setup.
 
 - Github: https://github.com/Dennis-van-Gils/project-project-diffusive-bubble-growth
 
-.. image:: https://raw.githubusercontent.com/Dennis-van-Gils/project-project-diffusive-bubble-growth/master/images/screenshot.png
+.. image:: https://github.com/Dennis-van-Gils/project-diffusive-bubble-growth/blob/main/images/screenshot.png
 
 Hardware
 ========
