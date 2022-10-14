@@ -5,13 +5,18 @@
 __author__ = "Dennis van Gils"
 __authoremail__ = "vangils.dennis@gmail.com"
 __url__ = "https://github.com/Dennis-van-Gils/project-diffusive-bubble-growth"
-__date__ = "11-10-2022"
+__date__ = "14-10-2022"
 __version__ = "1.0"
+print(__url__)
 # pylint: disable=bare-except, broad-except, unnecessary-lambda
+
+import os
+import sys
+import time
 
 # Constants
 DAQ_INTERVAL_MS = 1000  # [ms]
-CHART_INTERVAL_MS = 500  # [ms]
+CHART_INTERVAL_MS = 1000  # [ms]
 CHART_HISTORY_TIME = 7200  # [s]
 
 # Picotech PT-104 settings
@@ -20,13 +25,12 @@ PT104_PORT = 1234
 PT104_ENA = [1, 0, 0, 0]
 PT104_GAIN = [1, 0, 0, 0]
 
-# Show debug info in terminal? Warning: Slow! Do not leave on unintentionally.
-DEBUG = False
+# Global flags
+TRY_USING_OPENGL = True
+DEBUG = False  # Show debug info in terminal?
 
 # Mechanism to support both PyQt and PySide
 # -----------------------------------------
-import os
-import sys
 
 PYQT5 = "PyQt5"
 PYQT6 = "PyQt6"
@@ -90,9 +94,11 @@ QT_VERSION = (
 # \end[Mechanism to support both PyQt and PySide]
 # -----------------------------------------------
 
-import time
 import numpy as np
 import pyqtgraph as pg
+
+print(f"{QT_LIB:9s} {QT_VERSION}")
+print(f"PyQtGraph {pg.__version__}")
 
 import dvg_pyqt_controls as controls
 from dvg_debug_functions import tprint, dprint, print_fancy_traceback as pft
@@ -108,18 +114,20 @@ from dvg_devices.Picotech_PT104_protocol_UDP import Picotech_PT104
 from dvg_devices.Picotech_PT104_qdev import Picotech_PT104_qdev
 from dvg_qdeviceio import QDeviceIO
 
-TRY_USING_OPENGL = True
 if TRY_USING_OPENGL:
     try:
         import OpenGL.GL as gl  # pylint: disable=unused-import
+        from OpenGL.version import __version__ as gl_version
     except:
-        print("OpenGL acceleration: Disabled")
+        print("PyOpenGL  not found")
         print("To install: `conda install pyopengl` or `pip install pyopengl`")
     else:
-        print("OpenGL acceleration: Enabled")
+        print(f"PyOpenGL  {gl_version}")
         pg.setConfigOptions(useOpenGL=True)
         pg.setConfigOptions(antialias=True)
         pg.setConfigOptions(enableExperimental=True)
+else:
+    print("PyOpenGL  disabled")
 
 # Global pyqtgraph configuration
 # pg.setConfigOptions(leftButtonPan=False)
@@ -176,16 +184,16 @@ class MainWindow(QtWid.QWidget):
         # -------------------------
 
         # Left box
+        self.qlbl_update_counter = QtWid.QLabel("0")
         self.qlbl_DAQ_rate = QtWid.QLabel("DAQ: nan Hz")
         self.qlbl_DAQ_rate.setStyleSheet("QLabel {min-width: 7em}")
-        self.qlbl_update_counter = QtWid.QLabel("0")
         self.qlbl_recording_time = QtWid.QLabel()
 
         vbox_left = QtWid.QVBoxLayout()
-        vbox_left.addWidget(self.qlbl_DAQ_rate, stretch=0)
         vbox_left.addWidget(self.qlbl_update_counter, stretch=0)
-        vbox_left.addWidget(self.qlbl_recording_time, stretch=0)
         vbox_left.addStretch(1)
+        vbox_left.addWidget(self.qlbl_recording_time, stretch=0)
+        vbox_left.addWidget(self.qlbl_DAQ_rate, stretch=0)
 
         # Middle box
         self.qlbl_title = QtWid.QLabel(
@@ -503,7 +511,10 @@ def DAQ_function():
 
 
 def write_header_to_log():
+    str_cur_date, str_cur_time = current_date_time_strings()
     logger.write("[HEADER]\n")
+    logger.write(str_cur_date + "\n")
+    logger.write(str_cur_time + "\n")
     logger.write(window.qtxt_comments.toPlainText())
     logger.write("\n\n[DATA]\n")
     logger.write("[s]\t[±0.015 °C]\t[±0.008 bar]\n")
