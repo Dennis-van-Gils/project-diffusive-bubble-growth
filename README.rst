@@ -46,7 +46,6 @@ Open `Anaconda Prompt` and navigate to the unpacked folder. Run the following to
 install the necessary packages: ::
 
    cd src_python
-   conda update -n base -c defaults conda
    conda create -n py39 python=3.9
    conda activate py39
    pip install -r requirements.txt
