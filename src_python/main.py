@@ -511,7 +511,7 @@ def DAQ_function():
 
 
 def write_header_to_log():
-    str_cur_date, str_cur_time = current_date_time_strings()
+    str_cur_date, str_cur_time, _ = get_current_date_time()
     logger.write("[HEADER]\n")
     logger.write(str_cur_date + "\n")
     logger.write(str_cur_time + "\n")
@@ -532,11 +532,8 @@ def write_data_to_log():
 # ------------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    # --------------------------------------------------------------------------
-    #   Connect to devices
-    # --------------------------------------------------------------------------
 
-    # Arduino
+    # Connect to: Arduino
     ard = Arduino(
         name="Ard", connect_to_specific_ID="Diffusive Bubble Growth logger"
     )
@@ -548,26 +545,20 @@ if __name__ == "__main__":
         print("Exiting...\n")
         sys.exit(0)
 
-    # Picotech PT-104
+    # Connect to: Picotech PT-104
     pt104 = Picotech_PT104(name="PT104")
     if pt104.connect(PT104_IP, PT104_PORT):
         pt104.begin()
         pt104.start_conversion(PT104_ENA, PT104_GAIN)
 
-    # --------------------------------------------------------------------------
-    #   Create application
-    # --------------------------------------------------------------------------
-
+    # Create application and main window
     QtCore.QThread.currentThread().setObjectName("MAIN")  # For DEBUG info
     app = QtWid.QApplication(sys.argv)
     app.setFont(QtGui.QFont("Arial", 9))
     app.aboutToQuit.connect(about_to_quit)
+    window = MainWindow()
 
-    # --------------------------------------------------------------------------
-    #   Set up multithreaded communication with the devices
-    # --------------------------------------------------------------------------
-
-    # Arduino
+    # Set up multi-threaded communication: Arduino
     ard_qdev = QDeviceIO(ard)
     ard_qdev.create_worker_DAQ(
         DAQ_function=DAQ_function,
@@ -575,33 +566,22 @@ if __name__ == "__main__":
         critical_not_alive_count=3,
         debug=DEBUG,
     )
+    ard_qdev.signal_DAQ_updated.connect(window.update_GUI)
+    ard_qdev.signal_connection_lost.connect(notify_connection_lost)
 
-    # Picotech PT-104
+    # Set up multi-threaded communication: Picotech PT-104
+    @Slot()
+    def process_PT104_updated():
+        state.temp = pt104.state.ch1_T
+
     pt104_qdev = Picotech_PT104_qdev(
         dev=pt104,
         DAQ_interval_ms=10,
         debug=DEBUG,
     )
-
-    @Slot()
-    def process_PT104_updated():
-        state.temp = pt104.state.ch1_T
-
-    # --------------------------------------------------------------------------
-    #   Create GUI
-    # --------------------------------------------------------------------------
-
-    window = MainWindow()
-
-    # Connect signals
-    ard_qdev.signal_DAQ_updated.connect(window.update_GUI)
-    ard_qdev.signal_connection_lost.connect(notify_connection_lost)
     pt104_qdev.signal_DAQ_updated.connect(process_PT104_updated)
 
-    # --------------------------------------------------------------------------
-    #   File logger
-    # --------------------------------------------------------------------------
-
+    # File logger
     logger = FileLogger(
         write_header_function=write_header_to_log,
         write_data_function=write_data_to_log,
@@ -615,10 +595,7 @@ if __name__ == "__main__":
         lambda: window.qpbt_record.setText("Click to start recording to file")
     )
 
-    # --------------------------------------------------------------------------
-    #   Timers
-    # --------------------------------------------------------------------------
-
+    # Timers
     timer_GUI = QtCore.QTimer()
     timer_GUI.timeout.connect(window.update_GUI)
     timer_GUI.start(100)
@@ -627,14 +604,12 @@ if __name__ == "__main__":
     timer_charts.timeout.connect(window.update_chart)
     timer_charts.start(CHART_INTERVAL_MS)
 
-    # --------------------------------------------------------------------------
-    #   Start the main GUI event loop
-    # --------------------------------------------------------------------------
-
+    # Start threads
     ard_qdev.start()
     pt104_qdev.start()
-    window.show()
 
+    # Start the main GUI event loop
+    window.show()
     if QT_LIB in (PYQT5, PYSIDE2):
         sys.exit(app.exec_())
     else:
