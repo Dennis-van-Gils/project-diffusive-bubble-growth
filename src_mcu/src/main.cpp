@@ -56,8 +56,8 @@ const RT_Click_Calibration R_CLICK_CALIB{3.99, 20.15, 796, 4020};
 
 // Single R click readings fluctuate a lot and so we will employ an exponential
 // moving average (EMA) by using oversampling and subsequent low-pass filtering
-const uint32_t EMA_DT = 10000; // Desired oversampling interval [µs]
-const float EMA_LP = 10.;      // Low-pass filter cut-off frequency [Hz]
+const uint32_t EMA_DT = 5000; // Desired oversampling interval [µs]
+const float EMA_LP = 1.;      // Low-pass filter cut-off frequency [Hz]
 
 R_Click R_click(PIN_R_CLICK, R_CLICK_CALIB, EMA_DT, EMA_LP);
 
